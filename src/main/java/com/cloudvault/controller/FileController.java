@@ -1,70 +1,42 @@
 package com.cloudvault.controller;
 
 import com.cloudvault.model.FileMetadata;
-import com.cloudvault.service.DynamoDBService;
+import com.cloudvault.service.DynamoService;
 import com.cloudvault.service.S3Service;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/files")
-@CrossOrigin("*")
 public class FileController {
 
-    @Autowired
-    private S3Service s3Service;
+    private final S3Service s3;
+    private final DynamoService dynamo;
 
-    @Autowired
-    private DynamoDBService dynamoDBService;
+    public FileController(S3Service s3, DynamoService dynamo) {
+        this.s3 = s3;
+        this.dynamo = dynamo;
+    }
 
-    // UPLOAD
     @PostMapping("/upload")
-    public String uploadFile(@RequestParam("file") MultipartFile file,
-                             @RequestParam("userId") String userId) throws Exception {
-
-        String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-
-        // Upload to S3
-        s3Service.uploadFile(fileName, file.getBytes());
-
-        // Save metadata to DynamoDB
-        FileMetadata metadata = new FileMetadata();
-        metadata.setUserId(userId);
-        metadata.setImageId(fileName);
-        metadata.setUploadTime(LocalDateTime.now().toString());
-        metadata.setFileUrl("");
-
-        dynamoDBService.saveFile(metadata);
-
+    public String upload(@RequestParam("file") MultipartFile file,
+                         @RequestParam("userId") String userId) throws Exception {
+        String type = file.getContentType();
+        if (!"image/jpeg".equals(type) && !"image/png".equals(type))
+            return "Only JPG, JPEG and PNG files are allowed";
+        String imageId = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+        s3.upload(imageId, file.getBytes());
+        dynamo.save(userId, imageId, LocalDateTime.now().toString());
         return "Upload successful";
     }
 
-    // GET FILES
     @GetMapping("/{userId}")
-    public List<FileMetadata> getFiles(@PathVariable String userId) {
-
-        List<FileMetadata> files = dynamoDBService.getFilesByUserId(userId);
-
-        for (FileMetadata file : files) {
-            String url = s3Service.generatePresignedUrl(file.getImageId());
-            file.setFileUrl(url);
-        }
-
-        return files;
-    }
-
-    // DELETE
-    @DeleteMapping("/delete")
-    public String deleteFile(@RequestParam String fileName,
-                             @RequestParam String userId) {
-
-        s3Service.deleteFile(fileName);
-        dynamoDBService.deleteFile(userId, fileName);
-
-        return "Deleted";
+    public List<FileMetadata> list(@PathVariable String userId) {
+        return dynamo.findByUser(userId).stream()
+                .map(f -> new FileMetadata(f.userId(), f.imageId(), f.uploadTime(),
+                        s3.presignedUrl(f.imageId())))
+                .toList();
     }
 }

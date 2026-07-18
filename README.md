@@ -1,103 +1,51 @@
-# cloudvault
+# CloudVault
 
-A file storage app where users can upload, view and delete images — stored on AWS S3, metadata tracked in DynamoDB.
-
-Runs on EC2 — needs AWS S3 bucket and DynamoDB tables set up.
-
----
+A file vault built on AWS. Binary files are stored in S3 and their metadata in DynamoDB. Users sign up and log in with BCrypt-hashed passwords. On read, the app returns a 10-minute presigned S3 URL for each file, so the bucket stays private and the browser loads images directly from S3.
 
 ## Stack
 
-- Spring Boot, Java 17
-- AWS S3 (file storage)
-- AWS DynamoDB (user and file metadata)
-- Spring Security Crypto (BCrypt password hashing)
-- Plain HTML + Bootstrap (frontend)
+Spring Boot 3, Java 17, AWS SDK v2 (S3, DynamoDB), BCrypt.
 
----
+## AWS resources
 
-## How it works
+- S3 bucket (private) in `ap-south-1`
+- DynamoDB table `Users` — partition key `email` (String)
+- DynamoDB table `Images` — partition key `userId` (String), sort key `imageId` (String)
 
-User signs up → credentials stored in DynamoDB Users table → on login, BCrypt checks password → session stored in browser sessionStorage → user uploads images → file goes to S3, metadata (userId, imageId, uploadTime) saved in DynamoDB Images table → presigned URLs generated on fetch so images are accessible without making bucket public.
+The composite key on `Images` lets the app read one user's files with a Query on `userId` instead of a full table Scan.
 
-```
-Upload flow:
-POST /api/files/upload
-        ↓
-   S3 (stores file)
-        +
-   DynamoDB (saves metadata)
+## Configuration
 
-Fetch flow:
-GET /api/files/{userId}
-        ↓
-   DynamoDB (get metadata)
-        ↓
-   S3Presigner (generate temp URL per file)
-```
-
-Admin can view all users, see image count per user, enable/disable accounts, and delete users — deleting a user also cleans up all their S3 files and DynamoDB records.
-
----
-
-## Pages
-
-- `/` — landing, choose user or admin
-- `/login.html` — user login
-- `/signup.html` — user signup
-- `/dashboard.html` — upload, view, delete files
-- `/admin-login.html` — admin login
-- `/admin-dashboard.html` — manage users
-
----
-
-## API
+All AWS settings live in `src/main/resources/application.properties`. The two secret values are read from environment variables so no real keys are ever committed:
 
 ```
-POST /api/auth/signup         → register user
-POST /api/auth/login          → login
-
-POST /api/files/upload        → upload file (multipart)
-GET  /api/files/{userId}      → get all files with presigned URLs
-DELETE /api/files/delete      → delete file from S3 + DynamoDB
-
-GET  /api/admin/users         → all users with image count
-POST /api/admin/toggle        → enable or disable user
-DELETE /api/admin/delete      → delete user + all their files
+aws.region=ap-south-1
+aws.access-key-id=${AWS_ACCESS_KEY_ID:}
+aws.secret-access-key=${AWS_SECRET_ACCESS_KEY:}
+aws.s3.bucket=${S3_BUCKET:REPLACE_WITH_YOUR_BUCKET_NAME}
+aws.dynamodb.users-table=Users
+aws.dynamodb.images-table=Images
 ```
 
----
+Set these before running:
 
-## Run locally
-
-Need AWS account with S3 bucket and DynamoDB tables (Users, Images) created.
-
-```bash
-git clone https://github.com/official-vishalk-1999/cloudvault
-cd cloudvault
+```
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+S3_BUCKET=your-bucket-name
 ```
 
-Set env vars:
-```
-AWS_ACCESS_KEY
-AWS_SECRET_KEY
-AWS_REGION
-AWS_S3_BUCKET
-```
+## Run
 
-```bash
-./mvnw spring-boot:run
+```
+mvn spring-boot:run
 ```
 
 Open http://localhost:8080
 
-Default admin login: `admin / admin`
+## Endpoints
 
----
-
-## Notes
-
-- File upload restricted to JPG, JPEG, PNG — max 1MB enforced on frontend
-- Deleting a user from admin panel removes all their S3 files and DynamoDB records — not reversible
-- DynamoDB Images table: partition key `userId`, sort key `imageId`
-- DynamoDB Users table: partition key `email`
+- `POST /api/auth/signup` — register a user
+- `POST /api/auth/login` — verify credentials
+- `POST /api/files/upload` — upload a file (`file`, `userId`)
+- `GET /api/files/{userId}` — list a user's files with presigned URLs
