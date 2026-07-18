@@ -16,13 +16,13 @@ The composite key on `Images` lets the app read one user's files with a Query on
 
 ## Configuration
 
-All AWS settings live in `src/main/resources/application.properties`. The two secret values are read from environment variables so no real keys are ever committed:
+All AWS settings live in `src/main/resources/application.properties`. 
 
 ```
 aws.region=ap-south-1
-aws.access-key-id=${AWS_ACCESS_KEY_ID:}
-aws.secret-access-key=${AWS_SECRET_ACCESS_KEY:}
-aws.s3.bucket=${S3_BUCKET:REPLACE_WITH_YOUR_BUCKET_NAME}
+aws.access-key-id=YOUR_ACCESS_KEY_ID
+aws.secret-access-key=YOUR_ACCESS_KEY
+aws.s3.bucket=_YOUR_BUCKET_NAME
 aws.dynamodb.users-table=Users
 aws.dynamodb.images-table=Images
 ```
